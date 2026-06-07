@@ -647,6 +647,7 @@
 									{#if savings > 0.005}−{fmt(savings)}{:else if count > 0}{count} item{count > 1 ? 's' : ''}{:else}—{/if}
 								</span>
 							{/if}
+							<button class="layer-add" aria-label="Add to {layer.title}" onclick={(e) => { e.stopPropagation(); openLayers[layer.id] = true; addItem(layer.id); }}>+ Add</button>
 						</div>
 
 						{#if openLayers[layer.id]}
@@ -702,56 +703,50 @@
 
 													<!-- Purchase discounts (mirrors Store discounts) -->
 													<div class="gc-sub" data-group="gc-{i}-discount">
-														<div class="gc-sub-head"><span class="dot" style="--c: {C_DISCOUNT}"></span><span class="gc-sub-title">Store discounts<small>Sale prices, promo codes, coupons</small></span></div>
+														<div class="gc-sub-head"><span class="dot" style="--c: {C_DISCOUNT}"></span><span class="gc-sub-title">Store discounts<small>Sale prices, promo codes, coupons</small></span><button class="sub-add" aria-label="Add store discount" onclick={() => gcAdd(gc, i, 'discount')}>+ Add</button></div>
 														{#each gc.discounts as d, di}
 															{@render discountRow(d, () => gcRemove(gc.discounts, di), gc.faceValue ?? 0)}
 														{/each}
-														<button class="add-chip custom" onclick={() => gcAdd(gc, i, 'discount')}><span class="chip-plus">+</span> Add</button>
 													</div>
 
 													<!-- Card-linked offers (mirrors Card-linked offers) -->
 													<div class="gc-sub" data-group="gc-{i}-offer">
-														<div class="gc-sub-head"><span class="dot" style="--c: {C_OFFER}"></span><span class="gc-sub-title">Card-linked offers<small>Amex/Chase offers on the gift card purchase</small></span></div>
+														<div class="gc-sub-head"><span class="dot" style="--c: {C_OFFER}"></span><span class="gc-sub-title">Card-linked offers<small>Amex/Chase offers on the gift card purchase</small></span><button class="sub-add" aria-label="Add card-linked offer" onclick={() => gcAdd(gc, i, 'offer')}>+ Add</button></div>
 														{#each gc.offers as o, oi}
 															{@render offerRow(o, () => gcRemove(gc.offers, oi), paid)}
 														{/each}
-														<button class="add-chip custom" onclick={() => gcAdd(gc, i, 'offer')}><span class="chip-plus">+</span> Add</button>
 													</div>
 
 													<!-- Cashback portals (mirrors Cashback portals) -->
 													<div class="gc-sub" data-group="gc-{i}-portal">
-														<div class="gc-sub-head"><span class="dot" style="--c: {C_PORTAL}"></span><span class="gc-sub-title">Cashback portals<small>Portal used to buy the gift card</small></span></div>
+														<div class="gc-sub-head"><span class="dot" style="--c: {C_PORTAL}"></span><span class="gc-sub-title">Cashback portals<small>Portal used to buy the gift card</small></span><button class="sub-add" aria-label="Add cashback portal" onclick={() => gcAdd(gc, i, 'portal')}>+ Add</button></div>
 														{#each gc.portals as p, pi}
 															{@render portalRow(p, () => gcRemove(gc.portals, pi), paid)}
 														{/each}
-														<button class="add-chip custom" onclick={() => gcAdd(gc, i, 'portal')}><span class="chip-plus">+</span> Add</button>
 													</div>
 
 													<!-- Card used to buy GC (mirrors Charged to card) -->
 													<div class="gc-sub" data-group="gc-{i}-card">
-														<div class="gc-sub-head"><span class="dot" style="--c: {C_CARD}"></span><span class="gc-sub-title">Charged to card<small>Cashback on what you charge to buy the GC</small></span></div>
+														<div class="gc-sub-head"><span class="dot" style="--c: {C_CARD}"></span><span class="gc-sub-title">Charged to card<small>Cashback on what you charge to buy the GC</small></span><button class="sub-add" aria-label="Add card" onclick={() => gcAdd(gc, i, 'card')}>+ Add</button></div>
 														{#each gc.cards as c, ci}
 															{@render cardRow(c, () => gcRemove(gc.cards, ci), gcChargedToCard(gc))}
 														{/each}
-														<button class="add-chip custom" onclick={() => gcAdd(gc, i, 'card')}><span class="chip-plus">+</span> Add</button>
 													</div>
 
 													<!-- Payment processor (mirrors Payment processor) -->
 													<div class="gc-sub" data-group="gc-{i}-processor">
-														<div class="gc-sub-head"><span class="dot" style="--c: {C_PROCESSOR}"></span><span class="gc-sub-title">Payment processor<small>PayPal, Paze & similar checkout rewards</small></span></div>
+														<div class="gc-sub-head"><span class="dot" style="--c: {C_PROCESSOR}"></span><span class="gc-sub-title">Payment processor<small>PayPal, Paze & similar checkout rewards</small></span><button class="sub-add" aria-label="Add payment processor reward" onclick={() => gcAdd(gc, i, 'processor')}>+ Add</button></div>
 														{#each gc.processorOffers as po, poi}
 															{@render processorRow(po, () => gcRemove(gc.processorOffers, poi), gcChargedToCard(gc))}
 														{/each}
-														<button class="add-chip custom" onclick={() => gcAdd(gc, i, 'processor')}><span class="chip-plus">+</span> Add</button>
 													</div>
 
 													<!-- Future value (mirrors Future value — bonus GC, loyalty) -->
 													<div class="gc-sub" data-group="gc-{i}-future">
-														<div class="gc-sub-head"><span class="dot" style="--c: {C_FUTURE}"></span><span class="gc-sub-title">Future value<small>Bonus gift cards & loyalty earned buying the GC</small></span></div>
+														<div class="gc-sub-head"><span class="dot" style="--c: {C_FUTURE}"></span><span class="gc-sub-title">Future value<small>Bonus gift cards & loyalty earned buying the GC</small></span><button class="sub-add" aria-label="Add future value" onclick={() => gcAdd(gc, i, 'future')}>+ Add</button></div>
 														{#each gc.futures as f, fi}
 															{@render futureRow(f, () => gcRemove(gc.futures, fi))}
 														{/each}
-														<button class="add-chip custom" onclick={() => gcAdd(gc, i, 'future')}><span class="chip-plus">+</span> Add</button>
 													</div>
 
 													<div class="gc-advantage">
@@ -778,12 +773,6 @@
 										{@render futureRow(f, () => removeFutureValue(i))}
 									{/each}
 								{/if}
-
-								<div class="add-section">
-									<button class="add-chip custom" onclick={() => addItem(layer.id)}>
-										<span class="chip-plus">+</span> Add
-									</button>
-								</div>
 
 							</div>
 						{/if}
@@ -1147,6 +1136,15 @@
 	.layer-amount.has-savings { color: var(--green); }
 	.layer-amount.has-future { color: var(--gold); }
 
+	.layer-add {
+		font-size: 12px; font-weight: 500; color: var(--ink-3);
+		border: 1px solid var(--line); border-radius: 7px;
+		padding: 4px 9px; background: var(--paper);
+		cursor: pointer; font-family: inherit; flex-shrink: 0; white-space: nowrap;
+		transition: background .1s, border-color .1s, color .1s;
+	}
+	.layer-add:hover { background: var(--bg); border-color: var(--ink-3); color: var(--ink); }
+
 	.layer-body { padding: 4px 18px 16px; }
 
 	/* Item rows */
@@ -1223,8 +1221,7 @@
 	.seg button.active { background: var(--ink); color: #fff; }
 	.seg button + button { border-left: 1px solid var(--line); }
 
-	/* Add section */
-	.add-section { margin-top: 8px; }
+	/* Add buttons */
 	.add-chip {
 		display: inline-flex; align-items: center; gap: 6px;
 		padding: 6px 10px; border-radius: 7px;
@@ -1235,8 +1232,15 @@
 		transition: background .1s, border-color .1s, color .1s;
 	}
 	.add-chip:hover { background: var(--paper-warm); border-color: var(--ink-3); color: var(--ink); }
-	.add-chip.custom { border-style: dashed; }
-	.chip-plus { font-size: 14px; line-height: 1; }
+
+	.sub-add {
+		font-size: 11.5px; font-weight: 500; color: var(--ink-3);
+		border: 1px dashed var(--line); border-radius: 6px;
+		padding: 3px 8px; background: transparent;
+		cursor: pointer; font-family: inherit; flex-shrink: 0; white-space: nowrap;
+		transition: background .1s, border-color .1s, color .1s;
+	}
+	.sub-add:hover { background: var(--paper-warm); border-color: var(--ink-3); color: var(--ink); }
 
 	/* Gift card detail — full mirror of the main builder */
 	.gc-detail {
@@ -1255,7 +1259,7 @@
 
 	.gc-sub { padding-top: 12px; margin-top: 4px; border-top: 1px dashed var(--line); }
 	.gc-sub-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-	.gc-sub-title { font-weight: 600; font-size: 12.5px; color: var(--ink); }
+	.gc-sub-title { flex: 1; min-width: 0; font-weight: 600; font-size: 12.5px; color: var(--ink); }
 	.gc-sub-title :global(small) { font-weight: 500; color: var(--ink-3); margin-left: 6px; font-size: 11px; }
 
 	.gc-advantage {

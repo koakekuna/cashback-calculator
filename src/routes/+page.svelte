@@ -785,6 +785,10 @@
 					</div>
 				{/each}
 			</div>
+
+			<div class="wallet-hint">
+				<strong>How savings stack:</strong> discounts first, then portals and offers, then card cashback on what's left. Gift card savings lower your card charge.
+			</div>
 		</div>
 
 		<!-- RIGHT column: receipt -->
@@ -886,19 +890,12 @@
 						<button onclick={copyReceipt}>Copy</button>
 					</div>
 				</div>
-
-				<div class="wallet-hint">
-					<strong>How savings stack:</strong> discounts first, then portals and offers, then card cashback on what's left. Gift card savings lower your card charge.
-				</div>
 			{:else}
 				<div class="receipt">
 					<div class="receipt-empty">
 						<div class="emo">🧾</div>
 						<strong>Your receipt is empty</strong><br />Enter a subtotal above to see your true out-of-pocket cost.
 					</div>
-				</div>
-				<div class="wallet-hint">
-					<strong>How savings stack:</strong> discounts first, then portals and offers, then card cashback on what's left. Gift card savings lower your card charge.
 				</div>
 			{/if}
 		</div>

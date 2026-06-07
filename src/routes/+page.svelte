@@ -144,18 +144,12 @@
 		const taxAmount      = taxFlat      ?? 0;
 		const shippingAmount = shippingFlat ?? 0;
 
+		// Portals (Rakuten etc.) pay on the pre-tax merchandise subtotal, excluding
+		// tax, shipping and gift-card spend — so they use discountedSubtotal.
 		let portalSavings = 0;
 		for (const p of portals)
 			portalSavings += p.valueType === 'percent'
 				? discountedSubtotal * ((p.value ?? 0) / 100) : (p.value ?? 0);
-
-		let offerSavings = 0;
-		for (const o of offers) {
-			if (o.type === 'percent') {
-				const raw = discountedSubtotal * ((o.off ?? 0) / 100);
-				offerSavings += o.max != null ? Math.min(raw, o.max) : raw;
-			} else { offerSavings += o.off ?? 0; }
-		}
 
 		// Gift cards: buying a discounted gift card lowers the cash you part with at
 		// checkout; any cashback earned BUYING it is a rebate that posts later.
@@ -168,6 +162,19 @@
 		}
 
 		const chargedToCC = Math.max(0, discountedSubtotal + taxAmount + shippingAmount - gcFaceTotal);
+
+		// Card-linked offers (Amex/Chase) credit the actual card transaction — tax and
+		// shipping included, gift-carded portion excluded — so they use chargedToCC,
+		// the same base as card cashback and processor rewards. Eligibility thresholds
+		// (e.g. "spend $75") are left to the user's judgement.
+		let offerSavings = 0;
+		for (const o of offers) {
+			if (o.type === 'percent') {
+				const raw = chargedToCC * ((o.off ?? 0) / 100);
+				offerSavings += o.max != null ? Math.min(raw, o.max) : raw;
+			} else { offerSavings += o.off ?? 0; }
+		}
+
 		let creditCardSavings = 0;
 		for (const cc of creditCards) creditCardSavings += chargedToCC * ((cc.pct ?? 0) / 100);
 
@@ -688,7 +695,7 @@
 
 								{:else if layer.id === 'offer'}
 									{#each offers as o, i}
-										{@render offerRow(o, () => removeOffer(i), result?.discountedSubtotal ?? (purchasePrice ?? 0))}
+										{@render offerRow(o, () => removeOffer(i), result?.chargedToCC ?? (purchasePrice ?? 0))}
 									{/each}
 
 								{:else if layer.id === 'portal'}
@@ -863,7 +870,7 @@
 						<div class="receipt-section">Rebates · back later</div>
 
 						{#each offers as o}
-							{@const v = o.type === 'percent' ? Math.min(o.max != null ? o.max : Infinity, result.discountedSubtotal * ((o.off ?? 0) / 100)) : (o.off ?? 0)}
+							{@const v = o.type === 'percent' ? Math.min(o.max != null ? o.max : Infinity, result.chargedToCC * ((o.off ?? 0) / 100)) : (o.off ?? 0)}
 							{#if v > 0}
 								<div class="receipt-row save">
 									<span class="label">{o.label || 'Card offer'}</span>

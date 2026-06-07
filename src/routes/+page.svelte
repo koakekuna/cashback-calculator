@@ -634,18 +634,24 @@
 					{@const savings = layerSavings(layer.id)}
 					{@const count   = layerCount(layer.id)}
 					<div class="stack-layer" data-layer-id={layer.id}>
-						<div class="layer-head" class:open={openLayers[layer.id]} onclick={() => openLayers[layer.id] = !openLayers[layer.id]}>
-							<svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M3 2l4 3-4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+						<div class="layer-head" class:open={openLayers[layer.id]} class:static={count === 0} onclick={() => { if (count > 0) openLayers[layer.id] = !openLayers[layer.id]; }}>
+							{#if count > 0}
+								<svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M3 2l4 3-4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+							{:else}
+								<span class="chev-spacer"></span>
+							{/if}
 							<span class="dot" style="--c: {layer.color}"></span>
 							<span class="layer-title">{layer.title}<small>{layer.desc}</small></span>
-							{#if layer.id === 'future'}
-								<span class="layer-amount" class:has-future={(result?.futureValue ?? 0) > 0.005}>
-									{#if (result?.futureValue ?? 0) > 0.005}+{fmt(result?.futureValue ?? 0)}{:else if count > 0}{count} item{count > 1 ? 's' : ''}{:else}—{/if}
-								</span>
-							{:else}
-								<span class="layer-amount" class:has-savings={savings > 0.005}>
-									{#if savings > 0.005}−{fmt(savings)}{:else if count > 0}{count} item{count > 1 ? 's' : ''}{:else}—{/if}
-								</span>
+							{#if count > 0}
+								{#if layer.id === 'future'}
+									<span class="layer-amount" class:has-future={(result?.futureValue ?? 0) > 0.005}>
+										{#if (result?.futureValue ?? 0) > 0.005}+{fmt(result?.futureValue ?? 0)}{:else}{count} item{count > 1 ? 's' : ''}{/if}
+									</span>
+								{:else}
+									<span class="layer-amount" class:has-savings={savings > 0.005}>
+										{#if savings > 0.005}−{fmt(savings)}{:else}{count} item{count > 1 ? 's' : ''}{/if}
+									</span>
+								{/if}
 							{/if}
 							<button class="layer-add" aria-label="Add to {layer.title}" onclick={(e) => { e.stopPropagation(); openLayers[layer.id] = true; addItem(layer.id); }}>+ Add</button>
 						</div>
@@ -1118,7 +1124,10 @@
 		transition: background .1s;
 	}
 	.layer-head:hover { background: var(--paper-warm); }
+	.layer-head.static { cursor: default; }
+	.layer-head.static:hover { background: none; }
 	.chev { color: var(--ink-4); transition: transform .15s, color .15s; flex-shrink: 0; display: block; }
+	.chev-spacer { width: 10px; flex-shrink: 0; }
 	.layer-head.open .chev { transform: rotate(90deg); color: var(--ink-2); }
 	.dot {
 		width: 8px; height: 8px; border-radius: 50%;

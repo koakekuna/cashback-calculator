@@ -490,8 +490,8 @@
 	<!-- Top bar -->
 	<div class="topbar">
 		<div class="brand">
-			<span class="brand-mark">S</span>
-			Stack <small>cashback calculator</small>
+			<span class="brand-mark">G</span>
+			Good Deals <small>cashback calculator</small>
 		</div>
 		<div class="topbar-right">
 			<button class="icon-btn" onclick={() => drawerOpen = true}>

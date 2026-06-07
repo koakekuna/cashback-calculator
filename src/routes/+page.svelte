@@ -566,11 +566,12 @@
 						<div class="inp"><span class="prefix">$</span><input type="number" min="0" step="0.01" placeholder="0.00" aria-label="Subtotal" bind:value={purchasePrice} /></div>
 					</div>
 					<div class="field">
-						<span class="field-label">Tax · Ship</span>
-						<div class="tax-ship-row">
-							<div class="inp"><span class="prefix">$</span><input type="number" min="0" step="0.01" placeholder="tax" bind:value={taxFlat} /></div>
-							<div class="inp"><span class="prefix">$</span><input type="number" min="0" step="0.01" placeholder="ship" bind:value={shippingFlat} /></div>
-						</div>
+						<span class="field-label">Tax</span>
+						<div class="inp"><span class="prefix">$</span><input type="number" min="0" step="0.01" placeholder="0.00" aria-label="Tax" bind:value={taxFlat} /></div>
+					</div>
+					<div class="field">
+						<span class="field-label">Shipping</span>
+						<div class="inp"><span class="prefix">$</span><input type="number" min="0" step="0.01" placeholder="0.00" aria-label="Shipping" bind:value={shippingFlat} /></div>
 					</div>
 				</div>
 
@@ -1007,14 +1008,13 @@
 	}
 	.purchase-row {
 		display: grid;
-		grid-template-columns: 1fr 120px 180px;
+		grid-template-columns: 1fr 120px 110px 110px;
 		gap: 10px;
 	}
 	@media (max-width: 600px) {
 		.purchase-row { grid-template-columns: 1fr 1fr; }
 		.purchase-row > :first-child { grid-column: 1 / -1; }
 	}
-	.tax-ship-row { display: flex; gap: 6px; }
 
 	.field { display: flex; flex-direction: column; gap: 5px; }
 	.field-label { font-size: 11px; color: var(--ink-3); font-weight: 500; }

@@ -8,7 +8,7 @@
 	type FutureValue = { label: string; mode: 'points' | 'flat'; points: number | null; cppCents: number | null; flatValue: number | null };
 	type ProcessorOffer = { label: string; type: 'percent' | 'flat'; off: number | null; max: number | null };
 	type GiftCard    = {
-		label: string; faceValue: number | null; storeCredit: number | null; showAdvanced: boolean;
+		label: string; faceValue: number | null; showAdvanced: boolean;
 		discounts: Discount[]; offers: Offer[]; portals: Portal[]; cards: CreditCard[]; processorOffers: ProcessorOffer[]; futures: FutureValue[];
 	};
 	type LayerId = 'discount' | 'offer' | 'portal' | 'giftcard' | 'card' | 'processor' | 'future';
@@ -35,7 +35,7 @@
 
 	function blankGiftCard(): GiftCard {
 		return {
-			label: '', faceValue: null, storeCredit: null, showAdvanced: true,
+			label: '', faceValue: null, showAdvanced: true,
 			discounts: [{ label: '', type: 'percent', value: null }],
 			offers: [],
 			portals: [],
@@ -90,7 +90,7 @@
 		for (const d of g.discounts.filter(d => d.type === 'flat'))    sub -= (d.value ?? 0);
 		return Math.max(0, sub);
 	}
-	function gcChargedToCard(g: GiftCard) { return Math.max(0, gcPaidPrice(g) - (g.storeCredit ?? 0)); }
+	function gcChargedToCard(g: GiftCard) { return gcPaidPrice(g); }
 	function gcPurchaseSavings(g: GiftCard) {
 		const paid    = gcPaidPrice(g);
 		const charged = gcChargedToCard(g);
@@ -109,7 +109,7 @@
 			if (po.type === 'percent') { const raw = charged * ((po.off ?? 0) / 100); processor += po.max != null ? Math.min(raw, po.max) : raw; }
 			else processor += po.off ?? 0;
 		}
-		return offer + portal + card + processor + (g.storeCredit ?? 0);
+		return offer + portal + card + processor;
 	}
 	function gcEffectiveCost(g: GiftCard) { return gcPaidPrice(g) - gcPurchaseSavings(g); }
 	function gcFutureValue(g: GiftCard) {
@@ -277,7 +277,7 @@
 		if (g?.promoType === 'bonus_gc' && g.promoBonus != null) futures.push({ label: 'Bonus GC', mode: 'flat', points: null, cppCents: null, flatValue: g.promoBonus });
 		if (g?.gcLoyaltyPoints != null) futures.push({ label: g.gcLoyaltyLabel || 'Loyalty', mode: 'points', points: g.gcLoyaltyPoints, cppCents: g.gcLoyaltyCpp ?? null, flatValue: null });
 		return {
-			label: g?.label ?? '', faceValue: g?.faceValue ?? null, storeCredit: g?.storeCredit ?? null, showAdvanced: false,
+			label: g?.label ?? '', faceValue: g?.faceValue ?? null, showAdvanced: false,
 			discounts,
 			offers: [],
 			portals: g?.gcPortalValue != null ? [{ label: g.gcPortalLabel || '', valueType: g.gcPortalType ?? 'percent', value: g.gcPortalValue }] : [],
@@ -701,10 +701,7 @@
 															<span class="field-label">Face value</span>
 															<div class="inp"><span class="prefix">$</span><input class="gc-face-input" type="number" min="0" step="0.01" placeholder="100" aria-label="Gift card face value" bind:value={gc.faceValue} /></div>
 														</div>
-														<div class="gc-field">
-															<span class="field-label">Store credit used <span class="gc-hint">reward GC / platform credit</span></span>
-															<div class="inp"><span class="prefix">$</span><input type="number" min="0" step="0.01" placeholder="0" aria-label="Store credit used" bind:value={gc.storeCredit} /></div>
-														</div>
+						
 													</div>
 
 													<!-- Purchase discounts (mirrors Store discounts) -->

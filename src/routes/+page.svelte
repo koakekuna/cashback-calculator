@@ -5,10 +5,10 @@
 	type Offer       = { label: string; type: 'percent' | 'flat'; off: number | null; max: number | null };
 	type CreditCard  = { label: string; pct: number | null };
 	type Portal      = { label: string; valueType: 'percent' | 'flat'; value: number | null };
-	type FutureValue = { label: string; mode: 'points' | 'flat'; points: number | null; cppCents: number | null; flatValue: number | null };
+	type FutureValue = { label: string; cashValue: number | null; points: number | null };
 	type ProcessorOffer = { label: string; type: 'percent' | 'flat'; off: number | null; max: number | null };
 	type GiftCard    = {
-		label: string; faceValue: number | null; storeCredit: number | null; showAdvanced: boolean;
+		label: string; faceValue: number | null; showAdvanced: boolean;
 		discounts: Discount[]; offers: Offer[]; portals: Portal[]; cards: CreditCard[]; processorOffers: ProcessorOffer[]; futures: FutureValue[];
 	};
 	type LayerId = 'discount' | 'offer' | 'portal' | 'giftcard' | 'card' | 'processor' | 'future';
@@ -35,7 +35,7 @@
 
 	function blankGiftCard(): GiftCard {
 		return {
-			label: '', faceValue: null, storeCredit: null, showAdvanced: true,
+			label: '', faceValue: null, showAdvanced: true,
 			discounts: [{ label: '', type: 'percent', value: null }],
 			offers: [],
 			portals: [],
@@ -78,9 +78,7 @@
 		return (Number.isFinite(n) ? n : 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 	}
 
-	function futureItemValue(f: FutureValue) {
-		return f.mode === 'flat' ? (f.flatValue ?? 0) : ((f.points ?? 0) * (f.cppCents ?? 0)) / 100;
-	}
+	function futureItemValue(f: FutureValue) { return f.cashValue ?? 0; }
 
 	// A gift card purchase is a mini-transaction that mirrors the main builder:
 	// face value → purchase discounts → store credit → portal & card cashback → future value.
@@ -90,7 +88,7 @@
 		for (const d of g.discounts.filter(d => d.type === 'flat'))    sub -= (d.value ?? 0);
 		return Math.max(0, sub);
 	}
-	function gcChargedToCard(g: GiftCard) { return Math.max(0, gcPaidPrice(g) - (g.storeCredit ?? 0)); }
+	function gcChargedToCard(g: GiftCard) { return gcPaidPrice(g); }
 	function gcPurchaseSavings(g: GiftCard) {
 		const paid    = gcPaidPrice(g);
 		const charged = gcChargedToCard(g);
@@ -109,7 +107,7 @@
 			if (po.type === 'percent') { const raw = charged * ((po.off ?? 0) / 100); processor += po.max != null ? Math.min(raw, po.max) : raw; }
 			else processor += po.off ?? 0;
 		}
-		return offer + portal + card + processor + (g.storeCredit ?? 0);
+		return offer + portal + card + processor;
 	}
 	function gcEffectiveCost(g: GiftCard) { return gcPaidPrice(g) - gcPurchaseSavings(g); }
 	function gcFutureValue(g: GiftCard) {
@@ -236,7 +234,7 @@
 	function removeGiftCard(i: number)  { giftCards = giftCards.filter((_, j) => j !== i); }
 	async function addProcessorOffer()  { processorOffers = [...processorOffers, { label: '', type: 'flat', off: null, max: null }]; await focusLastLabelIn('processor'); }
 	function removeProcessorOffer(i: number){ processorOffers = processorOffers.filter((_, j) => j !== i); }
-	async function addFutureValue(){ futureValues = [...futureValues, { label: '', mode: 'points', points: null, cppCents: null, flatValue: null }]; await focusLastLabelIn('future'); }
+	async function addFutureValue(){ futureValues = [...futureValues, { label: '', cashValue: null, points: null }]; await focusLastLabelIn('future'); }
 	function removeFutureValue(i: number){ futureValues = futureValues.filter((_, j) => j !== i); }
 
 	// Nested gift-card sub-item add/remove (mirrors the main sections)
@@ -246,7 +244,7 @@
 		else if (kind === 'portal')     { g.portals.push({ label: '', valueType: 'percent', value: null }); focusLastInGroup(`gc-${i}-portal`); }
 		else if (kind === 'card')       { g.cards.push({ label: '', pct: null }); focusLastInGroup(`gc-${i}-card`); }
 		else if (kind === 'processor')  { g.processorOffers.push({ label: '', type: 'flat', off: null, max: null }); focusLastInGroup(`gc-${i}-processor`); }
-		else if (kind === 'future')     { g.futures.push({ label: '', mode: 'flat', points: null, cppCents: null, flatValue: null }); focusLastInGroup(`gc-${i}-future`); }
+		else if (kind === 'future')     { g.futures.push({ label: '', cashValue: null, points: null }); focusLastInGroup(`gc-${i}-future`); }
 	}
 	function gcRemove<T>(arr: T[], idx: number) { arr.splice(idx, 1); }
 
@@ -274,10 +272,10 @@
 		else if (g?.promoType === 'flat_off' && g.flatOff != null)  discounts.push({ label: 'Discount', type: 'flat', value: g.flatOff });
 		if (discounts.length === 0) discounts.push({ label: '', type: 'percent', value: null });
 		const futures: FutureValue[] = [];
-		if (g?.promoType === 'bonus_gc' && g.promoBonus != null) futures.push({ label: 'Bonus GC', mode: 'flat', points: null, cppCents: null, flatValue: g.promoBonus });
-		if (g?.gcLoyaltyPoints != null) futures.push({ label: g.gcLoyaltyLabel || 'Loyalty', mode: 'points', points: g.gcLoyaltyPoints, cppCents: g.gcLoyaltyCpp ?? null, flatValue: null });
+		if (g?.promoType === 'bonus_gc' && g.promoBonus != null) futures.push({ label: 'Bonus GC', cashValue: g.promoBonus, points: null });
+		if (g?.gcLoyaltyPoints != null) futures.push({ label: g.gcLoyaltyLabel || 'Loyalty', cashValue: ((g.gcLoyaltyPoints ?? 0) * (g.gcLoyaltyCpp ?? 0)) / 100, points: g.gcLoyaltyPoints });
 		return {
-			label: g?.label ?? '', faceValue: g?.faceValue ?? null, storeCredit: g?.storeCredit ?? null, showAdvanced: false,
+			label: g?.label ?? '', faceValue: g?.faceValue ?? null, showAdvanced: false,
 			discounts,
 			offers: [],
 			portals: g?.gcPortalValue != null ? [{ label: g.gcPortalLabel || '', valueType: g.gcPortalType ?? 'percent', value: g.gcPortalValue }] : [],
@@ -313,10 +311,11 @@
 		offers = entry.offers; creditCards = entry.creditCards.length ? entry.creditCards : [{ label: '', pct: null }];
 		portals = entry.portals; giftCards = (entry.giftCards ?? []).map(migrateGiftCard);
 		processorOffers = entry.processorOffers ?? [];
-		futureValues = entry.futureValues ?? (entry as any).pointsEarned?.map((p: any) => ({
-			label: p.label ?? '', mode: p.totalValue != null ? 'flat' : 'points',
-			points: p.points ?? null, cppCents: p.cppCents ?? null, flatValue: p.totalValue ?? null,
-		})) ?? [];
+		futureValues = (entry.futureValues ?? (entry as any).pointsEarned ?? []).map((p: any) => {
+			if ('cashValue' in p) return p as FutureValue;
+			const cv = p.totalValue != null ? p.totalValue : ((p.points ?? 0) * (p.cppCents ?? 0)) / 100;
+			return { label: p.label ?? '', cashValue: cv || null, points: p.points ?? null };
+		});
 		drawerOpen = false;
 	}
 
@@ -462,24 +461,17 @@
 
 {#snippet futureRow(f: FutureValue, onRemove: () => void)}
 	{@const value = futureItemValue(f)}
+	{@const cpp = (f.points && f.cashValue) ? ((f.cashValue / f.points) * 100).toFixed(2) : null}
 	<div class="item-row">
 		<div class="item-icon" style="background: {C_FUTURE}22; color: {C_FUTURE}">★</div>
 		<div class="item-main">
-			<input class="item-label" type="text" placeholder={f.mode === 'flat' ? 'Bonus GC / credit' : 'Loyalty program'} bind:value={f.label} />
+			<input class="item-label" type="text" placeholder="Loyalty program / bonus GC" bind:value={f.label} />
 			<span class="item-meta">
-				{#if f.mode === 'flat'}Flat credit ≈ <strong>{fmt(value)}</strong> future{:else}{f.points ?? 0} pts × {f.cppCents ?? 0}¢ ≈ <strong>{fmt(value)}</strong> future{/if}
+				{#if cpp}≈ {cpp}¢/pt{:else if value > 0}future value{:else}enter cash value below{/if}
 			</span>
 		</div>
-		<div class="seg">
-			<button class:active={f.mode === 'points'} onclick={() => f.mode = 'points'}>pts</button>
-			<button class:active={f.mode === 'flat'} onclick={() => f.mode = 'flat'}>$</button>
-		</div>
-		{#if f.mode === 'points'}
-			<div class="item-value-input"><div class="inp"><input type="number" min="0" step="1" placeholder="pts" aria-label="Number of points" bind:value={f.points} /></div></div>
-			<div class="item-value-input"><div class="inp"><input type="number" min="0" step="0.01" placeholder="¢/pt" aria-label="Cents per point" bind:value={f.cppCents} /><span class="suffix">¢</span></div></div>
-		{:else}
-			<div class="item-value-input"><div class="inp"><span class="prefix">$</span><input type="number" min="0" step="0.01" placeholder="value" aria-label="Credit value" bind:value={f.flatValue} /></div></div>
-		{/if}
+		<div class="item-value-input item-value-pts"><div class="inp"><input type="number" min="0" step="1" placeholder="pts" aria-label="Number of points (optional)" bind:value={f.points} /><span class="suffix">pts</span></div></div>
+		<div class="item-value-input"><div class="inp"><span class="prefix">$</span><input type="number" min="0" step="0.01" placeholder="value" aria-label="Cash value" bind:value={f.cashValue} /></div></div>
 		<span class="item-future" class:zero={value <= 0}>+{fmt(value)}</span>
 		<button class="item-remove" aria-label="Remove" onclick={onRemove}>×</button>
 	</div>
@@ -490,8 +482,8 @@
 	<!-- Top bar -->
 	<div class="topbar">
 		<div class="brand">
-			<span class="brand-mark">S</span>
-			Stack <small>cashback calculator</small>
+			<span class="brand-mark">G</span>
+			Good Deals <small>cashback calculator</small>
 		</div>
 		<div class="topbar-right">
 			<button class="icon-btn" onclick={() => drawerOpen = true}>
@@ -563,17 +555,15 @@
 					</div>
 					<div class="field">
 						<span class="field-label">Subtotal</span>
-						<div class="inp lg">
-							<span class="prefix">$</span>
-							<input type="number" min="0" step="0.01" placeholder="0.00" bind:value={purchasePrice} />
-						</div>
+						<div class="inp"><span class="prefix">$</span><input type="number" min="0" step="0.01" placeholder="0.00" aria-label="Subtotal" bind:value={purchasePrice} /></div>
 					</div>
 					<div class="field">
-						<span class="field-label">Tax · Ship</span>
-						<div class="tax-ship-row">
-							<div class="inp"><span class="prefix">$</span><input type="number" min="0" step="0.01" placeholder="tax" bind:value={taxFlat} /></div>
-							<div class="inp"><span class="prefix">$</span><input type="number" min="0" step="0.01" placeholder="ship" bind:value={shippingFlat} /></div>
-						</div>
+						<span class="field-label">Tax</span>
+						<div class="inp"><span class="prefix">$</span><input type="number" min="0" step="0.01" placeholder="0.00" aria-label="Tax" bind:value={taxFlat} /></div>
+					</div>
+					<div class="field">
+						<span class="field-label">Shipping</span>
+						<div class="inp"><span class="prefix">$</span><input type="number" min="0" step="0.01" placeholder="0.00" aria-label="Shipping" bind:value={shippingFlat} /></div>
 					</div>
 				</div>
 
@@ -636,22 +626,29 @@
 					{@const savings = layerSavings(layer.id)}
 					{@const count   = layerCount(layer.id)}
 					<div class="stack-layer" data-layer-id={layer.id}>
-						<div class="layer-head" class:open={openLayers[layer.id]} onclick={() => openLayers[layer.id] = !openLayers[layer.id]}>
-							<svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M3 2l4 3-4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+						<div class="layer-head" class:open={openLayers[layer.id]} class:static={count === 0} onclick={() => { if (count > 0) openLayers[layer.id] = !openLayers[layer.id]; }}>
+							{#if count > 0}
+								<svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M3 2l4 3-4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+							{:else}
+								<span class="chev-spacer"></span>
+							{/if}
 							<span class="dot" style="--c: {layer.color}"></span>
 							<span class="layer-title">{layer.title}<small>{layer.desc}</small></span>
-							{#if layer.id === 'future'}
-								<span class="layer-amount" class:has-future={(result?.futureValue ?? 0) > 0.005}>
-									{#if (result?.futureValue ?? 0) > 0.005}+{fmt(result?.futureValue ?? 0)}{:else if count > 0}{count} item{count > 1 ? 's' : ''}{:else}—{/if}
-								</span>
-							{:else}
-								<span class="layer-amount" class:has-savings={savings > 0.005}>
-									{#if savings > 0.005}−{fmt(savings)}{:else if count > 0}{count} item{count > 1 ? 's' : ''}{:else}—{/if}
-								</span>
+							{#if count > 0}
+								{#if layer.id === 'future'}
+									<span class="layer-amount" class:has-future={(result?.futureValue ?? 0) > 0.005}>
+										{#if (result?.futureValue ?? 0) > 0.005}+{fmt(result?.futureValue ?? 0)}{:else}{count} item{count > 1 ? 's' : ''}{/if}
+									</span>
+								{:else}
+									<span class="layer-amount" class:has-savings={savings > 0.005}>
+										{#if savings > 0.005}−{fmt(savings)}{:else}{count} item{count > 1 ? 's' : ''}{/if}
+									</span>
+								{/if}
 							{/if}
+							<button class="layer-add" aria-label="Add to {layer.title}" onclick={(e) => { e.stopPropagation(); openLayers[layer.id] = true; addItem(layer.id); }}>+ Add</button>
 						</div>
 
-						{#if openLayers[layer.id]}
+						{#if openLayers[layer.id] && count > 0}
 							<div class="layer-body">
 
 								{#if layer.id === 'discount'}
@@ -696,64 +693,55 @@
 															<span class="field-label">Face value</span>
 															<div class="inp"><span class="prefix">$</span><input class="gc-face-input" type="number" min="0" step="0.01" placeholder="100" aria-label="Gift card face value" bind:value={gc.faceValue} /></div>
 														</div>
-														<div class="gc-field">
-															<span class="field-label">Store credit used <span class="gc-hint">reward GC / platform credit</span></span>
-															<div class="inp"><span class="prefix">$</span><input type="number" min="0" step="0.01" placeholder="0" aria-label="Store credit used" bind:value={gc.storeCredit} /></div>
-														</div>
+						
 													</div>
 
 													<!-- Purchase discounts (mirrors Store discounts) -->
 													<div class="gc-sub" data-group="gc-{i}-discount">
-														<div class="gc-sub-head"><span class="dot" style="--c: {C_DISCOUNT}"></span><span class="gc-sub-title">Store discounts<small>Sale prices, promo codes, coupons</small></span></div>
+														<div class="gc-sub-head"><span class="dot" style="--c: {C_DISCOUNT}"></span><span class="gc-sub-title">Store discounts<small>Sale prices, promo codes, coupons</small></span><button class="sub-add" aria-label="Add store discount" onclick={() => gcAdd(gc, i, 'discount')}>+ Add</button></div>
 														{#each gc.discounts as d, di}
 															{@render discountRow(d, () => gcRemove(gc.discounts, di), gc.faceValue ?? 0)}
 														{/each}
-														<button class="add-chip custom" onclick={() => gcAdd(gc, i, 'discount')}><span class="chip-plus">+</span> Add</button>
 													</div>
 
 													<!-- Card-linked offers (mirrors Card-linked offers) -->
 													<div class="gc-sub" data-group="gc-{i}-offer">
-														<div class="gc-sub-head"><span class="dot" style="--c: {C_OFFER}"></span><span class="gc-sub-title">Card-linked offers<small>Amex/Chase offers on the gift card purchase</small></span></div>
+														<div class="gc-sub-head"><span class="dot" style="--c: {C_OFFER}"></span><span class="gc-sub-title">Card-linked offers<small>Amex/Chase offers on the gift card purchase</small></span><button class="sub-add" aria-label="Add card-linked offer" onclick={() => gcAdd(gc, i, 'offer')}>+ Add</button></div>
 														{#each gc.offers as o, oi}
 															{@render offerRow(o, () => gcRemove(gc.offers, oi), paid)}
 														{/each}
-														<button class="add-chip custom" onclick={() => gcAdd(gc, i, 'offer')}><span class="chip-plus">+</span> Add</button>
 													</div>
 
 													<!-- Cashback portals (mirrors Cashback portals) -->
 													<div class="gc-sub" data-group="gc-{i}-portal">
-														<div class="gc-sub-head"><span class="dot" style="--c: {C_PORTAL}"></span><span class="gc-sub-title">Cashback portals<small>Portal used to buy the gift card</small></span></div>
+														<div class="gc-sub-head"><span class="dot" style="--c: {C_PORTAL}"></span><span class="gc-sub-title">Cashback portals<small>Portal used to buy the gift card</small></span><button class="sub-add" aria-label="Add cashback portal" onclick={() => gcAdd(gc, i, 'portal')}>+ Add</button></div>
 														{#each gc.portals as p, pi}
 															{@render portalRow(p, () => gcRemove(gc.portals, pi), paid)}
 														{/each}
-														<button class="add-chip custom" onclick={() => gcAdd(gc, i, 'portal')}><span class="chip-plus">+</span> Add</button>
 													</div>
 
 													<!-- Card used to buy GC (mirrors Charged to card) -->
 													<div class="gc-sub" data-group="gc-{i}-card">
-														<div class="gc-sub-head"><span class="dot" style="--c: {C_CARD}"></span><span class="gc-sub-title">Charged to card<small>Cashback on what you charge to buy the GC</small></span></div>
+														<div class="gc-sub-head"><span class="dot" style="--c: {C_CARD}"></span><span class="gc-sub-title">Charged to card<small>Cashback on what you charge to buy the GC</small></span><button class="sub-add" aria-label="Add card" onclick={() => gcAdd(gc, i, 'card')}>+ Add</button></div>
 														{#each gc.cards as c, ci}
 															{@render cardRow(c, () => gcRemove(gc.cards, ci), gcChargedToCard(gc))}
 														{/each}
-														<button class="add-chip custom" onclick={() => gcAdd(gc, i, 'card')}><span class="chip-plus">+</span> Add</button>
 													</div>
 
 													<!-- Payment processor (mirrors Payment processor) -->
 													<div class="gc-sub" data-group="gc-{i}-processor">
-														<div class="gc-sub-head"><span class="dot" style="--c: {C_PROCESSOR}"></span><span class="gc-sub-title">Payment processor<small>PayPal, Paze & similar checkout rewards</small></span></div>
+														<div class="gc-sub-head"><span class="dot" style="--c: {C_PROCESSOR}"></span><span class="gc-sub-title">Payment processor<small>PayPal, Paze & similar checkout rewards</small></span><button class="sub-add" aria-label="Add payment processor reward" onclick={() => gcAdd(gc, i, 'processor')}>+ Add</button></div>
 														{#each gc.processorOffers as po, poi}
 															{@render processorRow(po, () => gcRemove(gc.processorOffers, poi), gcChargedToCard(gc))}
 														{/each}
-														<button class="add-chip custom" onclick={() => gcAdd(gc, i, 'processor')}><span class="chip-plus">+</span> Add</button>
 													</div>
 
 													<!-- Future value (mirrors Future value — bonus GC, loyalty) -->
 													<div class="gc-sub" data-group="gc-{i}-future">
-														<div class="gc-sub-head"><span class="dot" style="--c: {C_FUTURE}"></span><span class="gc-sub-title">Future value<small>Bonus gift cards & loyalty earned buying the GC</small></span></div>
+														<div class="gc-sub-head"><span class="dot" style="--c: {C_FUTURE}"></span><span class="gc-sub-title">Future value<small>Bonus gift cards & loyalty earned buying the GC</small></span><button class="sub-add" aria-label="Add future value" onclick={() => gcAdd(gc, i, 'future')}>+ Add</button></div>
 														{#each gc.futures as f, fi}
 															{@render futureRow(f, () => gcRemove(gc.futures, fi))}
 														{/each}
-														<button class="add-chip custom" onclick={() => gcAdd(gc, i, 'future')}><span class="chip-plus">+</span> Add</button>
 													</div>
 
 													<div class="gc-advantage">
@@ -781,16 +769,14 @@
 									{/each}
 								{/if}
 
-								<div class="add-section">
-									<button class="add-chip custom" onclick={() => addItem(layer.id)}>
-										<span class="chip-plus">+</span> Add
-									</button>
-								</div>
-
 							</div>
 						{/if}
 					</div>
 				{/each}
+			</div>
+
+			<div class="wallet-hint">
+				<strong>How savings stack:</strong> discounts first, then portals and offers, then card cashback on what's left. Gift card savings lower your card charge.
 			</div>
 		</div>
 
@@ -893,19 +879,12 @@
 						<button onclick={copyReceipt}>Copy</button>
 					</div>
 				</div>
-
-				<div class="wallet-hint">
-					<strong>How savings stack:</strong> discounts first, then portals and offers, then card cashback on what's left. Gift card savings lower your card charge.
-				</div>
 			{:else}
 				<div class="receipt">
 					<div class="receipt-empty">
 						<div class="emo">🧾</div>
 						<strong>Your receipt is empty</strong><br />Enter a subtotal above to see your true out-of-pocket cost.
 					</div>
-				</div>
-				<div class="wallet-hint">
-					<strong>How savings stack:</strong> discounts first, then portals and offers, then card cashback on what's left. Gift card savings lower your card charge.
 				</div>
 			{/if}
 		</div>
@@ -1010,14 +989,13 @@
 	}
 	.purchase-row {
 		display: grid;
-		grid-template-columns: 1fr 120px 180px;
+		grid-template-columns: 1fr 120px 110px 110px;
 		gap: 10px;
 	}
 	@media (max-width: 600px) {
 		.purchase-row { grid-template-columns: 1fr 1fr; }
 		.purchase-row > :first-child { grid-column: 1 / -1; }
 	}
-	.tax-ship-row { display: flex; gap: 6px; }
 
 	.field { display: flex; flex-direction: column; gap: 5px; }
 	.field-label { font-size: 11px; color: var(--ink-3); font-weight: 500; }
@@ -1043,8 +1021,6 @@
 		font-family: inherit; color: var(--ink);
 	}
 	.inp input::placeholder { color: var(--ink-4); }
-	.inp.lg input { padding: 10px 4px; font-size: 16px; font-weight: 500; }
-	.inp.lg .prefix { font-size: 15px; }
 	.inp.merchant input { font-weight: 500; }
 	:global(input[type="number"]) { -moz-appearance: textfield; }
 	:global(input[type="number"]::-webkit-outer-spin-button),
@@ -1134,7 +1110,10 @@
 		transition: background .1s;
 	}
 	.layer-head:hover { background: var(--paper-warm); }
+	.layer-head.static { cursor: default; }
+	.layer-head.static:hover { background: none; }
 	.chev { color: var(--ink-4); transition: transform .15s, color .15s; flex-shrink: 0; display: block; }
+	.chev-spacer { width: 10px; flex-shrink: 0; }
 	.layer-head.open .chev { transform: rotate(90deg); color: var(--ink-2); }
 	.dot {
 		width: 8px; height: 8px; border-radius: 50%;
@@ -1151,6 +1130,15 @@
 	}
 	.layer-amount.has-savings { color: var(--green); }
 	.layer-amount.has-future { color: var(--gold); }
+
+	.layer-add {
+		font-size: 12px; font-weight: 500; color: var(--ink-3);
+		border: 1px solid var(--line); border-radius: 7px;
+		padding: 4px 9px; background: var(--paper);
+		cursor: pointer; font-family: inherit; flex-shrink: 0; white-space: nowrap;
+		transition: background .1s, border-color .1s, color .1s;
+	}
+	.layer-add:hover { background: var(--bg); border-color: var(--ink-3); color: var(--ink); }
 
 	.layer-body { padding: 4px 18px 16px; }
 
@@ -1184,6 +1172,7 @@
 
 	.item-value-input { width: 90px; flex-shrink: 0; }
 	.item-value-input .inp { width: 100%; }
+	.item-value-pts { width: 80px; }
 
 	.item-saves {
 		font-family: 'JetBrains Mono', monospace;
@@ -1228,8 +1217,7 @@
 	.seg button.active { background: var(--ink); color: #fff; }
 	.seg button + button { border-left: 1px solid var(--line); }
 
-	/* Add section */
-	.add-section { margin-top: 8px; }
+	/* Add buttons */
 	.add-chip {
 		display: inline-flex; align-items: center; gap: 6px;
 		padding: 6px 10px; border-radius: 7px;
@@ -1240,8 +1228,15 @@
 		transition: background .1s, border-color .1s, color .1s;
 	}
 	.add-chip:hover { background: var(--paper-warm); border-color: var(--ink-3); color: var(--ink); }
-	.add-chip.custom { border-style: dashed; }
-	.chip-plus { font-size: 14px; line-height: 1; }
+
+	.sub-add {
+		font-size: 11.5px; font-weight: 500; color: var(--ink-3);
+		border: 1px dashed var(--line); border-radius: 6px;
+		padding: 3px 8px; background: transparent;
+		cursor: pointer; font-family: inherit; flex-shrink: 0; white-space: nowrap;
+		transition: background .1s, border-color .1s, color .1s;
+	}
+	.sub-add:hover { background: var(--paper-warm); border-color: var(--ink-3); color: var(--ink); }
 
 	/* Gift card detail — full mirror of the main builder */
 	.gc-detail {
@@ -1260,7 +1255,7 @@
 
 	.gc-sub { padding-top: 12px; margin-top: 4px; border-top: 1px dashed var(--line); }
 	.gc-sub-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-	.gc-sub-title { font-weight: 600; font-size: 12.5px; color: var(--ink); }
+	.gc-sub-title { flex: 1; min-width: 0; font-weight: 600; font-size: 12.5px; color: var(--ink); }
 	.gc-sub-title :global(small) { font-weight: 500; color: var(--ink-3); margin-left: 6px; font-size: 11px; }
 
 	.gc-advantage {

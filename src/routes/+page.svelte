@@ -656,7 +656,7 @@
 							<button class="layer-add" aria-label="Add to {layer.title}" onclick={(e) => { e.stopPropagation(); openLayers[layer.id] = true; addItem(layer.id); }}>+ Add</button>
 						</div>
 
-						{#if openLayers[layer.id]}
+						{#if openLayers[layer.id] && count > 0}
 							<div class="layer-body">
 
 								{#if layer.id === 'discount'}

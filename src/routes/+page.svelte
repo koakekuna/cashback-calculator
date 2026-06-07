@@ -144,24 +144,37 @@
 		const taxAmount      = taxFlat      ?? 0;
 		const shippingAmount = shippingFlat ?? 0;
 
+		// Portals (Rakuten etc.) pay on the pre-tax merchandise subtotal, excluding
+		// tax, shipping and gift-card spend — so they use discountedSubtotal.
 		let portalSavings = 0;
 		for (const p of portals)
 			portalSavings += p.valueType === 'percent'
 				? discountedSubtotal * ((p.value ?? 0) / 100) : (p.value ?? 0);
 
+		// Gift cards: buying a discounted gift card lowers the cash you part with at
+		// checkout; any cashback earned BUYING it is a rebate that posts later.
+		const gcFaceTotal = giftCards.reduce((s, g) => s + (g.faceValue ?? 0), 0);
+		let gcCheckoutSavings = 0, gcRebateSavings = 0, gcFuture = 0;
+		for (const g of giftCards) {
+			gcCheckoutSavings += (g.faceValue ?? 0) - gcPaidPrice(g);
+			gcRebateSavings   += gcPurchaseSavings(g);
+			gcFuture          += gcFutureValue(g);
+		}
+
+		const chargedToCC = Math.max(0, discountedSubtotal + taxAmount + shippingAmount - gcFaceTotal);
+
+		// Card-linked offers (Amex/Chase) credit the actual card transaction — tax and
+		// shipping included, gift-carded portion excluded — so they use chargedToCC,
+		// the same base as card cashback and processor rewards. Eligibility thresholds
+		// (e.g. "spend $75") are left to the user's judgement.
 		let offerSavings = 0;
 		for (const o of offers) {
 			if (o.type === 'percent') {
-				const raw = discountedSubtotal * ((o.off ?? 0) / 100);
+				const raw = chargedToCC * ((o.off ?? 0) / 100);
 				offerSavings += o.max != null ? Math.min(raw, o.max) : raw;
 			} else { offerSavings += o.off ?? 0; }
 		}
 
-		const gcFaceTotal = giftCards.reduce((s, g) => s + (g.faceValue ?? 0), 0);
-		let giftCardSavings = 0;
-		for (const g of giftCards) giftCardSavings += (g.faceValue ?? 0) - gcEffectiveCost(g);
-
-		const chargedToCC = Math.max(0, discountedSubtotal + taxAmount + shippingAmount - gcFaceTotal);
 		let creditCardSavings = 0;
 		for (const cc of creditCards) creditCardSavings += chargedToCC * ((cc.pct ?? 0) / 100);
 
@@ -173,23 +186,41 @@
 			} else { processorSavings += po.off ?? 0; }
 		}
 
+		// Tier 1 — cash you actually part with at the register.
+		const checkoutReductions = discountSavings + gcCheckoutSavings;
+		const youPay = Math.max(0, base + taxAmount + shippingAmount - checkoutReductions);
+
+		// Tier 2 — cash rebates that land AFTER checkout (statement credits, portal
+		// payouts, card cashback, processor rewards, gift-card purchase cashback).
+		const rebates = offerSavings + portalSavings + creditCardSavings + processorSavings + gcRebateSavings;
+		const netCost = Math.max(0, youPay - rebates);
+
+		// Tier 3 — non-cash future rewards (points, miles, bonus gift cards).
 		let futureValue = 0;
 		for (const f of futureValues) futureValue += futureItemValue(f);
-		for (const g of giftCards)    futureValue += gcFutureValue(g);
+		futureValue += gcFuture;
 
-		const totalSavings = discountSavings + offerSavings + portalSavings + giftCardSavings + creditCardSavings + processorSavings;
-		const effective    = Math.max(0, base + taxAmount + shippingAmount - totalSavings);
-		const savingsPct   = totalSavings > 0 ? (totalSavings / base) * 100 : 0;
+		const totalCost    = base + taxAmount + shippingAmount;
+		const totalSavings = checkoutReductions + rebates;
+		const savingsPct   = totalCost > 0 ? (totalSavings / totalCost) * 100 : 0;
 		return {
-			base, taxAmount, shippingAmount, effective, totalSavings, savingsPct, futureValue,
-			discountedSubtotal, chargedToCC,
-			bucket: { discount: discountSavings, offer: offerSavings, portal: portalSavings, giftcard: giftCardSavings, card: creditCardSavings, processor: processorSavings },
+			base, taxAmount, shippingAmount, totalCost,
+			youPay, netCost, rebates, checkoutReductions, totalSavings, savingsPct, futureValue,
+			discountedSubtotal, chargedToCC, gcCheckoutSavings, gcRebateSavings,
+			bucket: {
+				discount: discountSavings,
+				giftcard: gcCheckoutSavings + gcRebateSavings,
+				offer: offerSavings,
+				portal: portalSavings,
+				card: creditCardSavings,
+				processor: processorSavings,
+			},
 		};
 	});
 
 	// --- Animated price ---
 	$effect(() => {
-		const target = result?.effective ?? 0;
+		const target = result?.youPay ?? 0;
 		const start  = untrack(() => displayedPrice);
 		const dur = 320, t0 = performance.now();
 		let raf: number;
@@ -331,8 +362,11 @@
 			`Subtotal: ${fmt(result.base)}`,
 			result.shippingAmount > 0 ? `Shipping: +${fmt(result.shippingAmount)}` : '',
 			result.taxAmount > 0 ? `Tax: +${fmt(result.taxAmount)}` : '',
+			`You pay at checkout: ${fmt(result.youPay)}`,
+			result.rebates > 0 ? `Rebates back later: −${fmt(result.rebates)}` : '',
+			result.rebates > 0 ? `Net cost: ${fmt(result.netCost)}` : '',
+			result.futureValue > 0 ? `Future rewards: +${fmt(result.futureValue)}` : '',
 			`Saved: ${fmt(result.totalSavings)} (${result.savingsPct.toFixed(1)}%)`,
-			`You pay: ${fmt(result.effective)}`,
 		].filter(Boolean);
 		try { await navigator.clipboard.writeText(lines.join('\n')); } catch {}
 	}
@@ -575,10 +609,13 @@
 					<div class="hero">
 						<div class="hero-row">
 							<div>
-								<p class="hero-label">You pay (true out-of-pocket)</p>
+								<p class="hero-label">You pay at checkout</p>
 								<p class="hero-price mono">
 									<span class="hero-dollar">$</span>{priceParts.dollars}<span class="hero-cents">.{priceParts.cents}</span>
 								</p>
+								{#if result.rebates > 0.005}
+									<p class="hero-net">Net <strong class="mono">{fmt(result.netCost)}</strong> after <span class="mono">{fmt(result.rebates)}</span> back in rebates</p>
+								{/if}
 							</div>
 							<div class="hero-right">
 								{#if result.totalSavings > 0}
@@ -601,7 +638,7 @@
 									{#each segments as seg}
 										<div class="stack-bar-seg" style="width: {Math.min(100, (seg.val / totalCost) * 100)}%; background: {seg.color};"></div>
 									{/each}
-									<div class="stack-bar-seg you-pay" style="width: {Math.min(100, (result.effective / totalCost) * 100)}%;"></div>
+									<div class="stack-bar-seg you-pay" style="width: {Math.min(100, (result.netCost / totalCost) * 100)}%;"></div>
 								</div>
 								<div class="stack-bar-legend">
 									{#each segments as seg}
@@ -611,7 +648,7 @@
 										</span>
 									{/each}
 									<span class="legend-dot" style="--c: var(--ink)">
-										You pay <span class="val mono">{fmt(result.effective)}</span>
+										{result.rebates > 0.005 ? 'Net cost' : 'You pay'} <span class="val mono">{fmt(result.netCost)}</span>
 									</span>
 								</div>
 							</div>
@@ -658,12 +695,12 @@
 
 								{:else if layer.id === 'offer'}
 									{#each offers as o, i}
-										{@render offerRow(o, () => removeOffer(i), purchasePrice ?? 0)}
+										{@render offerRow(o, () => removeOffer(i), result?.chargedToCC ?? (purchasePrice ?? 0))}
 									{/each}
 
 								{:else if layer.id === 'portal'}
 									{#each portals as p, i}
-										{@render portalRow(p, () => removePortal(i), purchasePrice ?? 0)}
+										{@render portalRow(p, () => removePortal(i), result?.discountedSubtotal ?? (purchasePrice ?? 0))}
 									{/each}
 
 								{:else if layer.id === 'giftcard'}
@@ -790,6 +827,7 @@
 					</div>
 					<div class="receipt-divider"></div>
 
+					<!-- Tier 1 — cash you part with at the register -->
 					<div class="receipt-row">
 						<span class="label">Subtotal</span>
 						<span class="amt">{fmt(result.base)}</span>
@@ -805,6 +843,16 @@
 						{/if}
 					{/each}
 
+					{#each giftCards as gc}
+						{@const v = (gc.faceValue ?? 0) - gcPaidPrice(gc)}
+						{#if v > 0}
+							<div class="receipt-row save">
+								<span class="label">{gc.label || 'Gift card'} <small>gift card</small></span>
+								<span class="amt">{fmt(v)}</span>
+							</div>
+						{/if}
+					{/each}
+
 					{#if result.shippingAmount > 0}
 						<div class="receipt-row"><span class="label">Shipping</span><span class="amt">+{fmt(result.shippingAmount)}</span></div>
 					{/if}
@@ -812,64 +860,75 @@
 						<div class="receipt-row"><span class="label">Tax</span><span class="amt">+{fmt(result.taxAmount)}</span></div>
 					{/if}
 
-					{#each offers as o}
-						{@const v = o.type === 'percent' ? Math.min(o.max != null ? o.max : Infinity, result.discountedSubtotal * ((o.off ?? 0) / 100)) : (o.off ?? 0)}
-						{#if v > 0}
-							<div class="receipt-row save">
-								<span class="label">{o.label || 'Card offer'}</span>
-								<span class="amt">{fmt(v)}</span>
-							</div>
-						{/if}
-					{/each}
-
-					{#each portals as p}
-						{@const v = p.valueType === 'percent' ? result.discountedSubtotal * ((p.value ?? 0) / 100) : (p.value ?? 0)}
-						{#if v > 0}
-							<div class="receipt-row save">
-								<span class="label">{p.label || 'Portal'}{#if p.valueType === 'percent'} <small>{p.value}%</small>{/if}</span>
-								<span class="amt">{fmt(v)}</span>
-							</div>
-						{/if}
-					{/each}
-
-					{#each giftCards as gc}
-						{@const v = (gc.faceValue ?? 0) - gcEffectiveCost(gc)}
-						{#if v > 0}
-							<div class="receipt-row save">
-								<span class="label">{gc.label || 'Gift card'}</span>
-								<span class="amt">{fmt(v)}</span>
-							</div>
-						{/if}
-					{/each}
-
-					{#each creditCards as cc}
-						{@const v = result.chargedToCC * ((cc.pct ?? 0) / 100)}
-						{#if v > 0}
-							<div class="receipt-row save">
-								<span class="label">{cc.label || 'Card cashback'} <small>{cc.pct}%</small></span>
-								<span class="amt">{fmt(v)}</span>
-							</div>
-						{/if}
-					{/each}
-
-					{#each processorOffers as po}
-						{@const v = po.type === 'percent' ? Math.min(po.max != null ? po.max : Infinity, result.chargedToCC * ((po.off ?? 0) / 100)) : (po.off ?? 0)}
-						{#if v > 0}
-							<div class="receipt-row save">
-								<span class="label">{po.label || 'Processor cashback'}{#if po.type === 'percent'} <small>{po.off}%</small>{/if}</span>
-								<span class="amt">{fmt(v)}</span>
-							</div>
-						{/if}
-					{/each}
-
-					<div class="receipt-total">
-						<div class="label">You pay</div>
-						<div class="amt mono">{fmt(result.effective)}</div>
+					<div class="receipt-total" class:has-more={result.rebates > 0.005}>
+						<div class="label">You pay at checkout</div>
+						<div class="amt mono">{fmt(result.youPay)}</div>
 					</div>
 
+					<!-- Tier 2 — cash rebates that post after checkout -->
+					{#if result.rebates > 0.005}
+						<div class="receipt-section">Rebates · back later</div>
+
+						{#each offers as o}
+							{@const v = o.type === 'percent' ? Math.min(o.max != null ? o.max : Infinity, result.chargedToCC * ((o.off ?? 0) / 100)) : (o.off ?? 0)}
+							{#if v > 0}
+								<div class="receipt-row save">
+									<span class="label">{o.label || 'Card offer'}</span>
+									<span class="amt">{fmt(v)}</span>
+								</div>
+							{/if}
+						{/each}
+
+						{#each portals as p}
+							{@const v = p.valueType === 'percent' ? result.discountedSubtotal * ((p.value ?? 0) / 100) : (p.value ?? 0)}
+							{#if v > 0}
+								<div class="receipt-row save">
+									<span class="label">{p.label || 'Portal'}{#if p.valueType === 'percent'} <small>{p.value}%</small>{/if}</span>
+									<span class="amt">{fmt(v)}</span>
+								</div>
+							{/if}
+						{/each}
+
+						{#each creditCards as cc}
+							{@const v = result.chargedToCC * ((cc.pct ?? 0) / 100)}
+							{#if v > 0}
+								<div class="receipt-row save">
+									<span class="label">{cc.label || 'Card cashback'} <small>{cc.pct}%</small></span>
+									<span class="amt">{fmt(v)}</span>
+								</div>
+							{/if}
+						{/each}
+
+						{#each processorOffers as po}
+							{@const v = po.type === 'percent' ? Math.min(po.max != null ? po.max : Infinity, result.chargedToCC * ((po.off ?? 0) / 100)) : (po.off ?? 0)}
+							{#if v > 0}
+								<div class="receipt-row save">
+									<span class="label">{po.label || 'Processor cashback'}{#if po.type === 'percent'} <small>{po.off}%</small>{/if}</span>
+									<span class="amt">{fmt(v)}</span>
+								</div>
+							{/if}
+						{/each}
+
+						{#each giftCards as gc}
+							{@const v = gcPurchaseSavings(gc)}
+							{#if v > 0}
+								<div class="receipt-row save">
+									<span class="label">{gc.label || 'Gift card'} rebates</span>
+									<span class="amt">{fmt(v)}</span>
+								</div>
+							{/if}
+						{/each}
+
+						<div class="receipt-total">
+							<div class="label">Net cost</div>
+							<div class="amt mono">{fmt(result.netCost)}</div>
+						</div>
+					{/if}
+
+					<!-- Tier 3 — non-cash future rewards -->
 					{#if result.futureValue > 0}
 						<div class="receipt-future">
-							<span>+ Future value</span>
+							<span>+ Future rewards</span>
 							<strong>{fmt(result.futureValue)}</strong>
 						</div>
 					{/if}
@@ -1054,6 +1113,10 @@
 		color: var(--ink);
 	}
 	.hero-dollar { color: var(--ink-3); font-weight: 600; }
+	.hero-net {
+		margin-top: 6px; font-size: 12.5px; color: var(--ink-3);
+	}
+	.hero-net :global(strong) { color: var(--green); font-weight: 600; }
 	.hero-cents {
 		font-size: 0.52em; color: var(--ink-3); font-weight: 600;
 		margin-left: 2px; vertical-align: 0.32em;
@@ -1251,7 +1314,6 @@
 	.gc-fields { display: flex; gap: 10px; margin-bottom: 12px; }
 	.gc-field { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 	.gc-field .inp { width: 100%; }
-	.gc-hint { font-size: 10.5px; color: var(--ink-4); font-weight: 400; }
 
 	.gc-sub { padding-top: 12px; margin-top: 4px; border-top: 1px dashed var(--line); }
 	.gc-sub-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
@@ -1299,6 +1361,14 @@
 	}
 	.receipt-total .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
 	.receipt-total .amt { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+	/* When rebates follow, the checkout total is an intermediate figure — de-emphasize it. */
+	.receipt-total.has-more { margin-top: 10px; padding-top: 10px; }
+	.receipt-total.has-more .amt { font-size: 18px; color: #c4c3be; font-weight: 600; }
+	.receipt-section {
+		font-size: 10px; font-weight: 600; color: #777;
+		text-transform: uppercase; letter-spacing: 0.09em;
+		margin: 12px 0 6px;
+	}
 	.receipt-future {
 		background: rgba(255,255,255,.04);
 		border-radius: 8px; padding: 8px 10px; margin-top: 12px;

@@ -563,10 +563,7 @@
 					</div>
 					<div class="field">
 						<span class="field-label">Subtotal</span>
-						<div class="inp lg">
-							<span class="prefix">$</span>
-							<input type="number" min="0" step="0.01" placeholder="0.00" bind:value={purchasePrice} />
-						</div>
+						<div class="inp"><span class="prefix">$</span><input type="number" min="0" step="0.01" placeholder="0.00" aria-label="Subtotal" bind:value={purchasePrice} /></div>
 					</div>
 					<div class="field">
 						<span class="field-label">Tax · Ship</span>
@@ -1043,8 +1040,6 @@
 		font-family: inherit; color: var(--ink);
 	}
 	.inp input::placeholder { color: var(--ink-4); }
-	.inp.lg input { padding: 10px 4px; font-size: 16px; font-weight: 500; }
-	.inp.lg .prefix { font-size: 15px; }
 	.inp.merchant input { font-weight: 500; }
 	:global(input[type="number"]) { -moz-appearance: textfield; }
 	:global(input[type="number"]::-webkit-outer-spin-button),

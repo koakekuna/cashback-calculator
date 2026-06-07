@@ -5,7 +5,7 @@
 	type Offer       = { label: string; type: 'percent' | 'flat'; off: number | null; max: number | null };
 	type CreditCard  = { label: string; pct: number | null };
 	type Portal      = { label: string; valueType: 'percent' | 'flat'; value: number | null };
-	type FutureValue = { label: string; mode: 'points' | 'flat'; points: number | null; cppCents: number | null; flatValue: number | null };
+	type FutureValue = { label: string; cashValue: number | null; points: number | null };
 	type ProcessorOffer = { label: string; type: 'percent' | 'flat'; off: number | null; max: number | null };
 	type GiftCard    = {
 		label: string; faceValue: number | null; showAdvanced: boolean;
@@ -78,9 +78,7 @@
 		return (Number.isFinite(n) ? n : 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 	}
 
-	function futureItemValue(f: FutureValue) {
-		return f.mode === 'flat' ? (f.flatValue ?? 0) : ((f.points ?? 0) * (f.cppCents ?? 0)) / 100;
-	}
+	function futureItemValue(f: FutureValue) { return f.cashValue ?? 0; }
 
 	// A gift card purchase is a mini-transaction that mirrors the main builder:
 	// face value → purchase discounts → store credit → portal & card cashback → future value.
@@ -236,7 +234,7 @@
 	function removeGiftCard(i: number)  { giftCards = giftCards.filter((_, j) => j !== i); }
 	async function addProcessorOffer()  { processorOffers = [...processorOffers, { label: '', type: 'flat', off: null, max: null }]; await focusLastLabelIn('processor'); }
 	function removeProcessorOffer(i: number){ processorOffers = processorOffers.filter((_, j) => j !== i); }
-	async function addFutureValue(){ futureValues = [...futureValues, { label: '', mode: 'points', points: null, cppCents: null, flatValue: null }]; await focusLastLabelIn('future'); }
+	async function addFutureValue(){ futureValues = [...futureValues, { label: '', cashValue: null, points: null }]; await focusLastLabelIn('future'); }
 	function removeFutureValue(i: number){ futureValues = futureValues.filter((_, j) => j !== i); }
 
 	// Nested gift-card sub-item add/remove (mirrors the main sections)
@@ -246,7 +244,7 @@
 		else if (kind === 'portal')     { g.portals.push({ label: '', valueType: 'percent', value: null }); focusLastInGroup(`gc-${i}-portal`); }
 		else if (kind === 'card')       { g.cards.push({ label: '', pct: null }); focusLastInGroup(`gc-${i}-card`); }
 		else if (kind === 'processor')  { g.processorOffers.push({ label: '', type: 'flat', off: null, max: null }); focusLastInGroup(`gc-${i}-processor`); }
-		else if (kind === 'future')     { g.futures.push({ label: '', mode: 'flat', points: null, cppCents: null, flatValue: null }); focusLastInGroup(`gc-${i}-future`); }
+		else if (kind === 'future')     { g.futures.push({ label: '', cashValue: null, points: null }); focusLastInGroup(`gc-${i}-future`); }
 	}
 	function gcRemove<T>(arr: T[], idx: number) { arr.splice(idx, 1); }
 
@@ -274,8 +272,8 @@
 		else if (g?.promoType === 'flat_off' && g.flatOff != null)  discounts.push({ label: 'Discount', type: 'flat', value: g.flatOff });
 		if (discounts.length === 0) discounts.push({ label: '', type: 'percent', value: null });
 		const futures: FutureValue[] = [];
-		if (g?.promoType === 'bonus_gc' && g.promoBonus != null) futures.push({ label: 'Bonus GC', mode: 'flat', points: null, cppCents: null, flatValue: g.promoBonus });
-		if (g?.gcLoyaltyPoints != null) futures.push({ label: g.gcLoyaltyLabel || 'Loyalty', mode: 'points', points: g.gcLoyaltyPoints, cppCents: g.gcLoyaltyCpp ?? null, flatValue: null });
+		if (g?.promoType === 'bonus_gc' && g.promoBonus != null) futures.push({ label: 'Bonus GC', cashValue: g.promoBonus, points: null });
+		if (g?.gcLoyaltyPoints != null) futures.push({ label: g.gcLoyaltyLabel || 'Loyalty', cashValue: ((g.gcLoyaltyPoints ?? 0) * (g.gcLoyaltyCpp ?? 0)) / 100, points: g.gcLoyaltyPoints });
 		return {
 			label: g?.label ?? '', faceValue: g?.faceValue ?? null, showAdvanced: false,
 			discounts,
@@ -313,10 +311,11 @@
 		offers = entry.offers; creditCards = entry.creditCards.length ? entry.creditCards : [{ label: '', pct: null }];
 		portals = entry.portals; giftCards = (entry.giftCards ?? []).map(migrateGiftCard);
 		processorOffers = entry.processorOffers ?? [];
-		futureValues = entry.futureValues ?? (entry as any).pointsEarned?.map((p: any) => ({
-			label: p.label ?? '', mode: p.totalValue != null ? 'flat' : 'points',
-			points: p.points ?? null, cppCents: p.cppCents ?? null, flatValue: p.totalValue ?? null,
-		})) ?? [];
+		futureValues = (entry.futureValues ?? (entry as any).pointsEarned ?? []).map((p: any) => {
+			if ('cashValue' in p) return p as FutureValue;
+			const cv = p.totalValue != null ? p.totalValue : ((p.points ?? 0) * (p.cppCents ?? 0)) / 100;
+			return { label: p.label ?? '', cashValue: cv || null, points: p.points ?? null };
+		});
 		drawerOpen = false;
 	}
 
@@ -462,24 +461,17 @@
 
 {#snippet futureRow(f: FutureValue, onRemove: () => void)}
 	{@const value = futureItemValue(f)}
+	{@const cpp = (f.points && f.cashValue) ? ((f.cashValue / f.points) * 100).toFixed(2) : null}
 	<div class="item-row">
 		<div class="item-icon" style="background: {C_FUTURE}22; color: {C_FUTURE}">★</div>
 		<div class="item-main">
-			<input class="item-label" type="text" placeholder={f.mode === 'flat' ? 'Bonus GC / credit' : 'Loyalty program'} bind:value={f.label} />
+			<input class="item-label" type="text" placeholder="Loyalty program / bonus GC" bind:value={f.label} />
 			<span class="item-meta">
-				{#if f.mode === 'flat'}Flat credit ≈ <strong>{fmt(value)}</strong> future{:else}{f.points ?? 0} pts × {f.cppCents ?? 0}¢ ≈ <strong>{fmt(value)}</strong> future{/if}
+				{#if cpp}≈ {cpp}¢/pt{:else if value > 0}future value{:else}enter cash value below{/if}
 			</span>
 		</div>
-		<div class="seg">
-			<button class:active={f.mode === 'points'} onclick={() => f.mode = 'points'}>pts</button>
-			<button class:active={f.mode === 'flat'} onclick={() => f.mode = 'flat'}>$</button>
-		</div>
-		{#if f.mode === 'points'}
-			<div class="item-value-input"><div class="inp"><input type="number" min="0" step="1" placeholder="pts" aria-label="Number of points" bind:value={f.points} /></div></div>
-			<div class="item-value-input"><div class="inp"><input type="number" min="0" step="0.01" placeholder="¢/pt" aria-label="Cents per point" bind:value={f.cppCents} /><span class="suffix">¢</span></div></div>
-		{:else}
-			<div class="item-value-input"><div class="inp"><span class="prefix">$</span><input type="number" min="0" step="0.01" placeholder="value" aria-label="Credit value" bind:value={f.flatValue} /></div></div>
-		{/if}
+		<div class="item-value-input item-value-pts"><div class="inp"><input type="number" min="0" step="1" placeholder="pts" aria-label="Number of points (optional)" bind:value={f.points} /><span class="suffix">pts</span></div></div>
+		<div class="item-value-input"><div class="inp"><span class="prefix">$</span><input type="number" min="0" step="0.01" placeholder="value" aria-label="Cash value" bind:value={f.cashValue} /></div></div>
 		<span class="item-future" class:zero={value <= 0}>+{fmt(value)}</span>
 		<button class="item-remove" aria-label="Remove" onclick={onRemove}>×</button>
 	</div>
@@ -1180,6 +1172,7 @@
 
 	.item-value-input { width: 90px; flex-shrink: 0; }
 	.item-value-input .inp { width: 100%; }
+	.item-value-pts { width: 80px; }
 
 	.item-saves {
 		font-family: 'JetBrains Mono', monospace;
